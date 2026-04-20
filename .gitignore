@@ -1,0 +1,11 @@
+.venv/
+.direnv/
+data/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+uv.lock
+result
+.env

@@ -1,0 +1,12 @@
+[project]
+name = "oaasis-openviking"
+version = "0.1.0"
+description = "OpenViking context database with MCP server for Oaasis workspace"
+requires-python = ">=3.10"
+dependencies = [
+    "openviking>=0.3.9",
+    "openviking-mcp",
+]
+
+[tool.uv.sources]
+openviking-mcp = { git = "https://github.com/jadenmaciel/openviking-mcp.git" }
