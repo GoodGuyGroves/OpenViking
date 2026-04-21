@@ -20,12 +20,15 @@
             pkgs.python312
             pkgs.uv
             pkgs.git
+            pkgs.nginx
           ];
 
           shellHook = ''
             echo ""
-            echo "  Start the OpenViking server before using the MCP or CLI:"
-            echo "    mkdir -p data && openviking-server >> data/server.log 2>&1 & disown"
+            echo "  OpenViking multi-instance manager:"
+            echo "    ov-manager start       # start all instances + proxy"
+            echo "    ov-manager stop        # stop everything"
+            echo "    ov-manager status      # show instance status"
             echo ""
           '';
         };

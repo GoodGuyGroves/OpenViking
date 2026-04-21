@@ -9,3 +9,7 @@ build/
 uv.lock
 result
 .env
+data-work/
+data-personal/
+run/
+nginx.conf
