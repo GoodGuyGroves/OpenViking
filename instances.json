@@ -4,12 +4,12 @@
     "work": {
       "port": 1940,
       "config": "ov-work.conf",
-      "data": "data-work"
+      "data": "data/work"
     },
     "personal": {
       "port": 1941,
       "config": "ov-personal.conf",
-      "data": "data-personal"
+      "data": "data/personal"
     }
   },
   "services": {
