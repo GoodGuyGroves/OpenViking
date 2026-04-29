@@ -13,8 +13,8 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -532,33 +532,84 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
 
 
 # ---------------------------------------------------------------------------
+# Traefik-based instance discovery
+# ---------------------------------------------------------------------------
+
+ROUTER_PREFIX = "ov-"
+
+
+def discover_instances(
+    traefik_api: str,
+    traefik_entry: str,
+    max_retries: int = 15,
+    retry_delay: float = 2.0,
+) -> Dict[str, str]:
+    """Discover OpenViking instances from Traefik's API.
+
+    Queries Traefik for HTTP routers whose names start with ``ov-``
+    and returns a mapping of instance names to backend URLs routed
+    through the Traefik entrypoint.
+    """
+    for attempt in range(max_retries):
+        try:
+            resp = httpx.get(f"{traefik_api}/api/http/routers", timeout=5)
+            resp.raise_for_status()
+
+            instances: Dict[str, str] = {}
+            for router in resp.json():
+                name = router.get("name", "")
+                if (
+                    name.startswith(ROUTER_PREFIX)
+                    and "@" in name
+                    and router.get("status") == "enabled"
+                ):
+                    instance_name = name[len(ROUTER_PREFIX):name.index("@")]
+                    instances[instance_name] = f"{traefik_entry}/{instance_name}"
+
+            if instances:
+                logger.info(
+                    "Discovered %d instance(s) from Traefik: %s",
+                    len(instances),
+                    ", ".join(instances),
+                )
+                return instances
+
+            logger.warning(
+                "Attempt %d/%d: Traefik responded but no ov-* routers found yet",
+                attempt + 1, max_retries,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.warning(
+                "Attempt %d/%d: Traefik not ready: %s",
+                attempt + 1, max_retries, e,
+            )
+
+        if attempt < max_retries - 1:
+            time.sleep(retry_delay)
+
+    raise RuntimeError(
+        f"Failed to discover OpenViking instances from Traefik at {traefik_api} "
+        f"after {max_retries} attempts"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Composite ASGI application
 # ---------------------------------------------------------------------------
 
-def build_app(config_path: str = "instances.json") -> Starlette:
-    """Read instances.json and build a Starlette app that mounts one MCP
-    endpoint per OpenViking instance.
+def build_app(traefik_api: str, traefik_entry: str) -> Starlette:
+    """Discover instances via Traefik and build a Starlette app that mounts
+    one MCP endpoint per OpenViking instance.
 
     URL layout:
         /mcp/<instance_name>   ->  streamable-http MCP for that instance
     """
-    config_file = Path(config_path)
-    if not config_file.is_file():
-        raise FileNotFoundError(f"Config not found: {config_file.resolve()}")
-
-    config = json.loads(config_file.read_text())
-    proxy_port = config["proxy_port"]
-    proxy_host = os.environ.get("OPENVIKING_PROXY_HOST", "localhost")
-    instances = config["instances"]
-
-    if not instances:
-        raise ValueError("No instances defined in config")
+    instances = discover_instances(traefik_api, traefik_entry)
 
     routes: list[Mount] = []
     mcp_apps: dict[str, FastMCP] = {}
 
-    for name in instances:
-        backend_url = f"http://{proxy_host}:{proxy_port}/{name}"
+    for name, backend_url in instances.items():
         mcp_instance = create_mcp_for_instance(name, backend_url)
         mcp_apps[name] = mcp_instance
 
@@ -584,7 +635,7 @@ def build_app(config_path: str = "instances.json") -> Starlette:
                     )
                     logger.info("Session manager started for %s", inst_name)
             logger.info(
-                "OpenViking multi-instance MCP server ready: %s",
+                "OpenViking MCP server ready: %s",
                 ", ".join(f"/mcp/{n}" for n in instances),
             )
             yield
@@ -610,10 +661,6 @@ if __name__ == "__main__":
         help="Port to listen on (default: 2033)",
     )
     parser.add_argument(
-        "--config", type=str, default="instances.json",
-        help="Path to instances.json (default: instances.json)",
-    )
-    parser.add_argument(
         "--log-level", type=str, default="warning",
         choices=["debug", "info", "warning", "error", "critical"],
         help="Log level (default: warning)",
@@ -625,7 +672,10 @@ if __name__ == "__main__":
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    app = build_app(args.config)
+    traefik_api = os.environ.get("TRAEFIK_API_URL", "http://localhost:8080")
+    traefik_entry = os.environ.get("TRAEFIK_ENTRYPOINT_URL", "http://localhost:1933")
+
+    app = build_app(traefik_api, traefik_entry)
 
     uvicorn.run(
         app,

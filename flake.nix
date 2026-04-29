@@ -20,6 +20,8 @@
             pkgs.python312
             pkgs.uv
             pkgs.git
+            pkgs.colima
+            pkgs.docker
           ];
 
           shellHook = ''

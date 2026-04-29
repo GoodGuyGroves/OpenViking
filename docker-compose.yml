@@ -1,6 +1,32 @@
 services:
+  traefik:
+    image: traefik:v3
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:1933"
+    ports:
+      - "1933:1933"
+      - "8080:8080"  # Traefik dashboard — disable or add auth in production
+    volumes:
+      - ${DOCKER_HOST_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/overview || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   ov-work:
     build: .
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.ov-work.rule: "PathPrefix(`/work`)"
+      traefik.http.routers.ov-work.entrypoints: "web"
+      traefik.http.services.ov-work.loadbalancer.server.port: "1940"
+      traefik.http.middlewares.ov-work-strip.stripprefix.prefixes: "/work"
+      traefik.http.routers.ov-work.middlewares: "ov-work-strip"
     volumes:
       - ./data/work:/data
       - ./ov.container.conf:/config/ov.conf:ro
@@ -16,6 +42,13 @@ services:
 
   ov-personal:
     build: .
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.ov-personal.rule: "PathPrefix(`/personal`)"
+      traefik.http.routers.ov-personal.entrypoints: "web"
+      traefik.http.services.ov-personal.loadbalancer.server.port: "1940"
+      traefik.http.middlewares.ov-personal-strip.stripprefix.prefixes: "/personal"
+      traefik.http.routers.ov-personal.middlewares: "ov-personal-strip"
     volumes:
       - ./data/personal:/data
       - ./ov.container.conf:/config/ov.conf:ro
@@ -29,25 +62,15 @@ services:
       retries: 5
       start_period: 15s
 
-  nginx:
-    image: nginx:alpine
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "1933:1933"
-    depends_on:
-      ov-work:
-        condition: service_healthy
-      ov-personal:
-        condition: service_healthy
-
   ov-mcp:
     build: .
     command: ["python", "mcp-server.py", "--host", "0.0.0.0", "--port", "2033"]
     env_file: .env
     environment:
-      OPENVIKING_PROXY_HOST: nginx
+      TRAEFIK_API_URL: "http://traefik:8080"
+      TRAEFIK_ENTRYPOINT_URL: "http://traefik:1933"
     ports:
       - "2033:2033"
     depends_on:
-      - nginx
+      traefik:
+        condition: service_healthy

@@ -6,7 +6,7 @@ Local context database (RAG knowledge base) for the Oaasis workspace. Stores and
 
 | Component | Container | Port (host) | Description |
 |---|---|---|---|
-| nginx proxy | `nginx` | 1933 | Unified entry point, routes to instances |
+| Traefik | `traefik` | 1933, 8080 | Reverse proxy with Docker label discovery |
 | work instance | `ov-work` | (internal) | Work/Oaasis knowledge base |
 | personal instance | `ov-personal` | (internal) | Personal knowledge base |
 | MCP server | `ov-mcp` | 2033 | Multi-instance MCP endpoint |
@@ -39,6 +39,8 @@ docker compose logs -f ov-mcp        # follow MCP server logs
 docker compose up -d --build ov-mcp  # rebuild and restart MCP server
 ```
 
+Traefik dashboard is available at `http://localhost:8080` (dev only — disable or add auth in production).
+
 ## Architecture
 
 ```
@@ -47,11 +49,13 @@ docker compose up -d --build ov-mcp  # rebuild and restart MCP server
                     │  mcp-server.py               │
                     │  /mcp/work, /mcp/personal    │
                     └──────────┬──────────────────┘
-                               │ HTTP
+                               │ discovers instances
+                               │ via Traefik API
                     ┌──────────▼──────────────────┐
-                    │  nginx proxy (nginx:1933)    │
+                    │  Traefik (traefik:1933)      │
                     │  /work/ → ov-work:1940       │
                     │  /personal/ → ov-personal:1940│
+                    │  auto-discovers via Docker   │
                     └──┬──────────────────────┬───┘
                        │                      │
           ┌────────────▼───────┐  ┌───────────▼────────┐
@@ -62,17 +66,22 @@ docker compose up -d --build ov-mcp  # rebuild and restart MCP server
           └────────────────────┘  └─────────────────────┘
 ```
 
-Each OpenViking instance runs in its own container on the same port (1940). nginx routes by path prefix to the correct container. The MCP server creates one FastMCP endpoint per instance, mounted at `/mcp/<name>`.
+### How discovery works
+
+1. Each OpenViking instance has **Traefik labels** in `docker-compose.yml` that define its router name (`ov-<name>`) and path prefix (`/<name>`)
+2. **Traefik** watches the Docker socket and auto-discovers services with `traefik.enable=true`
+3. The **MCP server** queries Traefik's REST API (`/api/http/routers`) at startup, finds all routers prefixed with `ov-`, and creates an MCP endpoint for each
+4. MCP tool calls are routed through Traefik to the correct instance
+
+No config files to maintain — Docker labels are the single source of truth.
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Service orchestration (replaces ov-manager) |
+| `docker-compose.yml` | Service orchestration with Traefik labels |
 | `Dockerfile` | Single image for both openviking-server and MCP server |
-| `instances.json` | Defines instances and proxy port (read by mcp-server.py) |
-| `mcp-server.py` | Multi-instance MCP server (FastMCP + Starlette) |
-| `nginx.conf` | Reverse proxy config (uses Docker service names) |
+| `mcp-server.py` | Multi-instance MCP server (discovers instances via Traefik API) |
 | `ov.container.conf` | OpenViking config for containers (workspace at `/data`) |
 | `ov-work.conf` | Local dev config for the work instance |
 | `ov-personal.conf` | Local dev config for the personal instance |
@@ -82,21 +91,35 @@ Each OpenViking instance runs in its own container on the same port (1940). ngin
 
 ## Configuration
 
-**Instance configuration** lives in `instances.json`. Each instance needs:
-- A unique name (used as the nginx path prefix and MCP mount point)
-- A port (used for local dev; containers always use 1940)
-- A config file path and data directory path (for local dev)
+**Adding a new instance** requires only two things in `docker-compose.yml`:
 
-**Container config** (`ov.container.conf`): shared by all containers, uses `/data` as workspace. The docker-compose volume mounts map host data directories into each container.
+1. Add a new service based on the same image with Traefik labels:
+   ```yaml
+   ov-myinstance:
+     build: .
+     labels:
+       traefik.enable: "true"
+       traefik.http.routers.ov-myinstance.rule: "PathPrefix(`/myinstance`)"
+       traefik.http.routers.ov-myinstance.entrypoints: "web"
+       traefik.http.services.ov-myinstance.loadbalancer.server.port: "1940"
+       traefik.http.middlewares.ov-myinstance-strip.stripprefix.prefixes: "/myinstance"
+       traefik.http.routers.ov-myinstance.middlewares: "ov-myinstance-strip"
+     volumes:
+       - ./data/myinstance:/data
+       - ./ov.container.conf:/config/ov.conf:ro
+     env_file: .env
+   ```
+2. Run `docker compose up -d` — Traefik discovers it, MCP server picks it up on next restart
 
-**Local dev configs** (`ov-work.conf`, `ov-personal.conf`): point to `./data/work` and `./data/personal` respectively. Used when running openviking-server outside Docker.
+**Container config** (`ov.container.conf`): shared by all containers, uses `/data` as workspace.
 
 **OpenViking config** defines:
-- `storage.workspace` - path to the instance's data directory
-- `embedding.dense` - Mistral embedding model and dimension (mistral-embed via litellm, 1024-dim)
-- `vlm` - Vision/language model for generating summaries
+- `storage.workspace` — path to the instance's data directory
+- `embedding.dense` — Mistral embedding model (mistral-embed via litellm, 1024-dim)
+- `vlm` — Vision/language model for generating summaries
+- `server.auth_mode` — set to `api_key` for container networking
 
-**Secrets**: `MISTRAL_API_KEY` and `ANTHROPIC_API_KEY` must be in `.env` (gitignored). Config files reference them as `$MISTRAL_API_KEY` and `$ANTHROPIC_API_KEY`. Docker compose passes them via `env_file: .env`.
+**Secrets**: `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENVIKING_API_KEY` must be in `.env` (gitignored). Docker compose passes them via `env_file: .env`.
 
 ## Data Model
 
@@ -117,9 +140,9 @@ data/<instance>/
 ### Tiered Content (L0/L1/L2)
 
 Resources are stored with three levels of detail, auto-generated by the VLM:
-- **L0 (Abstract)** - one-line summary, cheapest to retrieve
-- **L1 (Overview)** - multi-paragraph structured summary
-- **L2 (Full Content)** - complete document text
+- **L0 (Abstract)** — one-line summary, cheapest to retrieve
+- **L1 (Overview)** — multi-paragraph structured summary
+- **L2 (Full Content)** — complete document text
 
 ## MCP Tools
 
@@ -130,22 +153,11 @@ The MCP server exposes 12 tools per instance:
 **Navigate**: `list_contents`, `get_resource_info`, `get_relations`
 **Manage**: `add_resource`, `add_memory`, `health_check`
 
-## Adding a New Instance
-
-1. Add the instance to `instances.json`
-2. Create `ov-<name>.conf` for local dev, pointing `storage.workspace` to `./data/<name>`
-3. Add a new service in `docker-compose.yml` using the same image, with a volume mount for `./data/<name>:/data`
-4. Add a `location /<name>/` block in `nginx.conf` proxying to the new service
-5. Run `docker compose up -d --build` to start everything
-
-## Docker Networking
-
-- The MCP server uses `OPENVIKING_PROXY_HOST` env var (set to `nginx` in compose) to route through the nginx container
-- Instance containers are not exposed to the host — only nginx (1933) and the MCP server (2033) are published
-- Health checks use Python's urllib since the slim image has no curl/wget
-
 ## Development Notes
 
 - The `Dockerfile` is shared: openviking-server instances use the default CMD, the MCP server overrides it via `command` in compose
-- The MCP server uses stateless HTTP mode with `streamable_http_path="/"`
+- The MCP server discovers instances by querying Traefik's `/api/http/routers` endpoint at startup, with retry logic for boot ordering
+- Traefik router names must start with `ov-` to be discovered (convention set in `mcp-server.py` as `ROUTER_PREFIX`)
+- The MCP server routes requests through Traefik (which handles path stripping and forwarding)
 - Instance data is persisted on the host via volume mounts (`./data/<name>:/data`)
+- Traefik dashboard at `:8080` is insecure by default — add auth or disable for production
