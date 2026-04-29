@@ -6,9 +6,9 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
       - "--entrypoints.web.address=:1933"
-    ports:
-      - "1933:1933"
-      - "8080:8080"  # Traefik dashboard — disable or add auth in production
+    expose:
+      - "1933"
+      - "8080"
     volumes:
       - ${DOCKER_HOST_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     healthcheck:
