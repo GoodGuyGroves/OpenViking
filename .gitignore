@@ -9,5 +9,3 @@ build/
 uv.lock
 result
 .env
-run/
-nginx.conf

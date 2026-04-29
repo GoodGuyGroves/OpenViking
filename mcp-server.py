@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -195,18 +196,22 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
     )
 
     _base_url = backend_url.rstrip("/")
+    _api_key = os.environ.get("OPENVIKING_API_KEY", "")
     _client: Optional[httpx.AsyncClient] = None
 
     async def _get_client() -> httpx.AsyncClient:
         nonlocal _client
         if _client is None or _client.is_closed:
+            headers = {
+                "X-OpenViking-Account": "default",
+                "X-OpenViking-User": "default",
+                "X-OpenViking-Agent": "default",
+            }
+            if _api_key:
+                headers["X-Api-Key"] = _api_key
             _client = httpx.AsyncClient(
                 base_url=_base_url,
-                headers={
-                    "X-OpenViking-Account": "default",
-                    "X-OpenViking-User": "default",
-                    "X-OpenViking-Agent": "default",
-                },
+                headers=headers,
                 timeout=60.0,
             )
         return _client
@@ -543,6 +548,7 @@ def build_app(config_path: str = "instances.json") -> Starlette:
 
     config = json.loads(config_file.read_text())
     proxy_port = config["proxy_port"]
+    proxy_host = os.environ.get("OPENVIKING_PROXY_HOST", "localhost")
     instances = config["instances"]
 
     if not instances:
@@ -552,7 +558,7 @@ def build_app(config_path: str = "instances.json") -> Starlette:
     mcp_apps: dict[str, FastMCP] = {}
 
     for name in instances:
-        backend_url = f"http://localhost:{proxy_port}/{name}"
+        backend_url = f"http://{proxy_host}:{proxy_port}/{name}"
         mcp_instance = create_mcp_for_instance(name, backend_url)
         mcp_apps[name] = mcp_instance
 
@@ -596,6 +602,10 @@ if __name__ == "__main__":
         description="Multi-instance OpenViking MCP server",
     )
     parser.add_argument(
+        "--host", type=str, default="127.0.0.1",
+        help="Host to bind to (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port", type=int, default=2033,
         help="Port to listen on (default: 2033)",
     )
@@ -619,7 +629,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         app,
-        host="127.0.0.1",
+        host=args.host,
         port=args.port,
         log_level=args.log_level,
     )

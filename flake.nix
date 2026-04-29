@@ -20,15 +20,15 @@
             pkgs.python312
             pkgs.uv
             pkgs.git
-            pkgs.nginx
           ];
 
           shellHook = ''
             echo ""
-            echo "  OpenViking multi-instance manager:"
-            echo "    ov-manager start       # start all instances + proxy"
-            echo "    ov-manager stop        # stop everything"
-            echo "    ov-manager status      # show instance status"
+            echo "  OpenViking (docker-compose):"
+            echo "    docker compose up -d       # start all services"
+            echo "    docker compose ps          # show service status"
+            echo "    docker compose down        # stop everything"
+            echo "    docker compose logs -f     # follow logs"
             echo ""
           '';
         };

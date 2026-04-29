@@ -11,17 +11,5 @@
       "config": "ov-personal.conf",
       "data": "data/personal"
     }
-  },
-  "services": {
-    "openviking-mcp": {
-      "port": 2033,
-      "command": ".venv/bin/python3",
-      "args": ["mcp-server.py", "--port", "2033"]
-    },
-    "deep-researcher": {
-      "port": 8001,
-      "command": "../deep-researcher/.venv/bin/python3",
-      "args": ["../deep-researcher/server.py", "--port", "8001"]
-    }
   }
 }
