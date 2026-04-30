@@ -1,5 +1,5 @@
 [project]
-name = "openviking"
+name = "openviking-server"
 version = "0.1.0"
 description = "Context database for AI agents with semantic search, tiered summaries, and MCP server integration"
 license = "Apache-2.0"
@@ -8,6 +8,7 @@ authors = []
 requires-python = ">=3.10"
 dependencies = [
     "openviking>=0.3.9",
+    "mcp>=1.27.0",
     "fastmcp>=3.2.0",
     "uvicorn>=0.44.0",
 ]

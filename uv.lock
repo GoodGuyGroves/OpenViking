@@ -1926,23 +1926,6 @@ wheels = [
 ]
 
 [[package]]
-name = "oaasis-openviking"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "fastmcp" },
-    { name = "openviking" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastmcp", specifier = ">=3.2.0" },
-    { name = "openviking", specifier = ">=0.3.9" },
-    { name = "uvicorn", specifier = ">=0.44.0" },
-]
-
-[[package]]
 name = "olefile"
 version = "0.47"
 source = { registry = "https://pypi.org/simple" }
@@ -2168,6 +2151,25 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/71/6c/7ab0c2d7a1f89fa21ba957d49d4ebe752c93ff8aad5787266222f8787a59/openviking-0.3.9-cp310-abi3-manylinux_2_31_aarch64.whl", hash = "sha256:961e4c5b6c91142da58f2609da4d36e928f2d22ad1c2cf6bbb38f755ed87708c", size = 10740625, upload-time = "2026-04-18T08:10:49.564Z" },
     { url = "https://files.pythonhosted.org/packages/91/32/47fd915d8d4bb505e70617fc40ecf8c38cb9803b0229cef762a27d8a4ba7/openviking-0.3.9-cp310-abi3-manylinux_2_31_x86_64.whl", hash = "sha256:5b3346fc2ceb724bbb91545a6d586561bfc53656fba2ef42e2a2790367797d6e", size = 12853144, upload-time = "2026-04-18T08:10:52.365Z" },
     { url = "https://files.pythonhosted.org/packages/e3/da/89960cda19d309e3de32da23e739f053a45cfee88e5b63aaf8ec1975c429/openviking-0.3.9-cp310-abi3-win_amd64.whl", hash = "sha256:3fb6d225c453b87cd8aac44f860b6b23638b4084611da3b04f06fae430716e04", size = 14851388, upload-time = "2026-04-18T08:10:54.709Z" },
+]
+
+[[package]]
+name = "openviking-server"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "mcp" },
+    { name = "openviking" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp", specifier = ">=3.2.0" },
+    { name = "mcp", specifier = ">=1.27.0" },
+    { name = "openviking", specifier = ">=0.3.9" },
+    { name = "uvicorn", specifier = ">=0.44.0" },
 ]
 
 [[package]]
