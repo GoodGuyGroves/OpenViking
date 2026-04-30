@@ -17,7 +17,7 @@ docker run -d \
   -p 1940:1940 \
   -v ./data:/data \
   --env-file .env \
-  ghcr.io/openviking/openviking:latest
+  ghcr.io/goodguygroves/openviking:latest
 
 # 3. Verify it's running
 curl http://localhost:1940/health
@@ -154,7 +154,7 @@ These tiers are generated automatically by the configured VLM and stored alongsi
 ## Building from Source
 
 ```bash
-git clone https://github.com/openviking/openviking.git
+git clone https://github.com/GoodGuyGroves/OpenViking.git
 cd openviking
 docker build -t openviking .
 ```

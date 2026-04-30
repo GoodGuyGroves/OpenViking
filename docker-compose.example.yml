@@ -20,7 +20,7 @@
 
 services:
   openviking:
-    image: ghcr.io/openviking/openviking:latest
+    image: ghcr.io/goodguygroves/openviking:latest
     # Or build from source:
     # build: .
     ports:
@@ -42,7 +42,7 @@ services:
   # Connects directly to the OpenViking instance above — no Traefik required.
   #
   # openviking-mcp:
-  #   image: ghcr.io/openviking/openviking:latest
+  #   image: ghcr.io/goodguygroves/openviking:latest
   #   command: ["python", "mcp-server.py", "--host", "0.0.0.0", "--port", "2033"]
   #   environment:
   #     OPENVIKING_INSTANCES: "default=http://openviking:1940"
@@ -96,7 +96,7 @@ services:
 #  # Reachable at http://localhost:1933/docs/
 #
 #  ov-docs:
-#    image: ghcr.io/openviking/openviking:latest
+#    image: ghcr.io/goodguygroves/openviking:latest
 #    labels:
 #      traefik.enable: "true"
 #      traefik.http.routers.ov-docs.rule: "PathPrefix(`/docs`)"
@@ -120,7 +120,7 @@ services:
 #  # Reachable at http://localhost:1933/research/
 #
 #  ov-research:
-#    image: ghcr.io/openviking/openviking:latest
+#    image: ghcr.io/goodguygroves/openviking:latest
 #    labels:
 #      traefik.enable: "true"
 #      traefik.http.routers.ov-research.rule: "PathPrefix(`/research`)"
@@ -145,7 +145,7 @@ services:
 #  # MCP tool endpoints at /mcp/<instance_name>. Connect your AI agent here.
 #
 #  ov-mcp:
-#    image: ghcr.io/openviking/openviking:latest
+#    image: ghcr.io/goodguygroves/openviking:latest
 #    command: ["python", "mcp-server.py", "--host", "0.0.0.0", "--port", "2033"]
 #    env_file: .env
 #    environment:

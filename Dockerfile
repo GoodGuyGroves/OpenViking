@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="OpenViking"
 LABEL org.opencontainers.image.description="Context database for AI agents with semantic search, tiered summaries, and MCP server integration"
-LABEL org.opencontainers.image.url="https://github.com/openviking/openviking"
-LABEL org.opencontainers.image.source="https://github.com/openviking/openviking"
+LABEL org.opencontainers.image.url="https://github.com/GoodGuyGroves/OpenViking"
+LABEL org.opencontainers.image.source="https://github.com/GoodGuyGroves/OpenViking"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Create non-root user and application directories
