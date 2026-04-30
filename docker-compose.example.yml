@@ -1,0 +1,158 @@
+# =============================================================================
+# OpenViking — Example Docker Compose
+# =============================================================================
+#
+# Two patterns are shown below:
+#   A) Single instance (active)    — simplest setup, no reverse proxy needed
+#   B) Multi-instance with Traefik — commented out, for running named instances
+#
+# Quick start:
+#   1. Copy this file:   cp docker-compose.example.yml docker-compose.yml
+#   2. Create your .env: cp .env.example .env  (and fill in API keys)
+#   3. Run:              docker compose up -d
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Pattern A: Single Instance (default)
+# ---------------------------------------------------------------------------
+# One OpenViking instance exposed directly on port 1940. No proxy needed.
+
+services:
+  openviking:
+    image: ghcr.io/openviking/openviking:latest
+    # Or build from source:
+    # build: .
+    ports:
+      - "1940:1940"
+    volumes:
+      - ./data:/data
+      # Optional: mount your own config file instead of using env vars.
+      # When no config is mounted, the entrypoint generates one from env vars.
+      # - ./my-config.conf:/config/ov.conf:ro
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:1940/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # Optional: MCP server for AI agent integration.
+  # Connects directly to the OpenViking instance above — no Traefik required.
+  #
+  # openviking-mcp:
+  #   image: ghcr.io/openviking/openviking:latest
+  #   command: ["python", "mcp-server.py", "--host", "0.0.0.0", "--port", "2033"]
+  #   environment:
+  #     OPENVIKING_INSTANCES: "default=http://openviking:1940"
+  #   env_file: .env
+  #   ports:
+  #     - "2033:2033"
+  #   depends_on:
+  #     openviking:
+  #       condition: service_healthy
+
+
+# ---------------------------------------------------------------------------
+# Pattern B: Multi-Instance with Traefik (commented out)
+# ---------------------------------------------------------------------------
+# Run multiple named OpenViking instances behind Traefik. Each instance gets
+# its own data directory and is reachable at /<name>/ via the proxy.
+#
+# An MCP server auto-discovers all instances through the Traefik API and
+# exposes them as /mcp/<name> endpoints.
+#
+# To use this pattern:
+#   1. Comment out the single-instance "openviking" service above
+#   2. Uncomment everything below
+#   3. Run: docker compose up -d
+#
+#  # --- Traefik reverse proxy ---
+#  # Routes requests to instances based on path prefix. The Docker provider
+#  # watches for container labels, so adding a new instance is just adding
+#  # a new service with the right labels — no config files to update.
+#
+#  traefik:
+#    image: traefik:v3
+#    command:
+#      - "--api.insecure=true"                        # Dashboard at :8080 (disable in production)
+#      - "--providers.docker=true"                     # Auto-discover containers via labels
+#      - "--providers.docker.exposedByDefault=false"   # Only route explicitly labeled services
+#      - "--entrypoints.web.address=:1933"             # Main entrypoint for OpenViking traffic
+#    ports:
+#      - "1933:1933"    # OpenViking proxy
+#      - "8080:8080"    # Traefik dashboard (remove in production)
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock:ro
+#    healthcheck:
+#      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/overview || exit 1"]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 3
+#      start_period: 5s
+#
+#  # --- Instance: docs ---
+#  # Reachable at http://localhost:1933/docs/
+#
+#  ov-docs:
+#    image: ghcr.io/openviking/openviking:latest
+#    labels:
+#      traefik.enable: "true"
+#      traefik.http.routers.ov-docs.rule: "PathPrefix(`/docs`)"
+#      traefik.http.routers.ov-docs.entrypoints: "web"
+#      traefik.http.services.ov-docs.loadbalancer.server.port: "1940"
+#      traefik.http.middlewares.ov-docs-strip.stripprefix.prefixes: "/docs"
+#      traefik.http.routers.ov-docs.middlewares: "ov-docs-strip"
+#    volumes:
+#      - ./data/docs:/data
+#    env_file: .env
+#    expose:
+#      - "1940"
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:1940/health')"]
+#      interval: 30s
+#      timeout: 5s
+#      start_period: 15s
+#      retries: 3
+#
+#  # --- Instance: research ---
+#  # Reachable at http://localhost:1933/research/
+#
+#  ov-research:
+#    image: ghcr.io/openviking/openviking:latest
+#    labels:
+#      traefik.enable: "true"
+#      traefik.http.routers.ov-research.rule: "PathPrefix(`/research`)"
+#      traefik.http.routers.ov-research.entrypoints: "web"
+#      traefik.http.services.ov-research.loadbalancer.server.port: "1940"
+#      traefik.http.middlewares.ov-research-strip.stripprefix.prefixes: "/research"
+#      traefik.http.routers.ov-research.middlewares: "ov-research-strip"
+#    volumes:
+#      - ./data/research:/data
+#    env_file: .env
+#    expose:
+#      - "1940"
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:1940/health')"]
+#      interval: 30s
+#      timeout: 5s
+#      start_period: 15s
+#      retries: 3
+#
+#  # --- MCP server ---
+#  # Auto-discovers all ov-* instances via Traefik's API and exposes them as
+#  # MCP tool endpoints at /mcp/<instance_name>. Connect your AI agent here.
+#
+#  ov-mcp:
+#    image: ghcr.io/openviking/openviking:latest
+#    command: ["python", "mcp-server.py", "--host", "0.0.0.0", "--port", "2033"]
+#    env_file: .env
+#    environment:
+#      TRAEFIK_API_URL: "http://traefik:8080"
+#      TRAEFIK_ENTRYPOINT_URL: "http://traefik:1933"
+#    ports:
+#      - "2033:2033"
+#    depends_on:
+#      traefik:
+#        condition: service_healthy

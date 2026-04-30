@@ -1,0 +1,42 @@
+# Secrets (CRITICAL — contains API keys)
+.env
+
+# Version control
+.git/
+.gitignore
+
+# Python virtual environments and caches
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Runtime data volumes (can be very large)
+data/
+
+# Nix artifacts
+result
+flake.nix
+flake.lock
+
+# direnv
+.direnv/
+.envrc
+
+# Docker and compose files
+Dockerfile
+docker-compose.yml
+docker-compose.example.yml
+
+# Config files (mounted at runtime, not baked into image)
+*.conf
+
+# Documentation
+README.md
+CLAUDE.md
+LICENSE
+
+# Claude Code
+.claude/

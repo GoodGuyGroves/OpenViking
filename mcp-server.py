@@ -1,8 +1,13 @@
 # Multi-instance OpenViking MCP Server
 #
-# Serves multiple OpenViking instances from a single MCP server process.
-# Each instance is mounted at /mcp/<instance_name> and routes all tool calls
-# to the corresponding OpenViking backend via nginx proxy.
+# Serves one or more OpenViking instances from a single MCP server process.
+# Each instance is mounted at /mcp/<instance_name> and proxies tool calls
+# to the corresponding OpenViking backend.
+#
+# Instance discovery (in priority order):
+#   1. OPENVIKING_INSTANCES env var — explicit name=url pairs
+#   2. TRAEFIK_API_URL env var — auto-discover via Traefik router labels
+#   3. Default — single instance at http://localhost:1940
 #
 # Inspired by jadenmaciel/openviking-mcp (MIT license)
 # https://github.com/jadenmaciel/openviking-mcp
@@ -532,6 +537,37 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
 
 
 # ---------------------------------------------------------------------------
+# Direct instance configuration
+# ---------------------------------------------------------------------------
+
+def parse_instances(instances_str: str) -> Dict[str, str]:
+    """Parse OPENVIKING_INSTANCES env var into a name->URL mapping.
+
+    Format: name=url[,name=url,...]
+    Example: docs=http://localhost:1940,research=http://host2:1940
+    """
+    instances = {}
+    for entry in instances_str.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            raise ValueError(
+                f"Invalid instance format: '{entry}'. Expected 'name=url' "
+                f"(e.g., 'default=http://localhost:1940')"
+            )
+        name, url = entry.split("=", 1)
+        name = name.strip()
+        url = url.strip()
+        if not name or not url:
+            raise ValueError(f"Invalid instance entry: '{entry}' — name and URL must be non-empty")
+        instances[name] = url
+    if not instances:
+        raise ValueError("OPENVIKING_INSTANCES is set but contains no valid entries")
+    return instances
+
+
+# ---------------------------------------------------------------------------
 # Traefik-based instance discovery
 # ---------------------------------------------------------------------------
 
@@ -597,15 +633,12 @@ def discover_instances(
 # Composite ASGI application
 # ---------------------------------------------------------------------------
 
-def build_app(traefik_api: str, traefik_entry: str) -> Starlette:
-    """Discover instances via Traefik and build a Starlette app that mounts
-    one MCP endpoint per OpenViking instance.
+def build_app(instances: Dict[str, str]) -> Starlette:
+    """Build a Starlette app that mounts one MCP endpoint per OpenViking instance.
 
     URL layout:
         /mcp/<instance_name>   ->  streamable-http MCP for that instance
     """
-    instances = discover_instances(traefik_api, traefik_entry)
-
     routes: list[Mount] = []
     mcp_apps: dict[str, FastMCP] = {}
 
@@ -672,10 +705,24 @@ if __name__ == "__main__":
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    traefik_api = os.environ.get("TRAEFIK_API_URL", "http://localhost:8080")
-    traefik_entry = os.environ.get("TRAEFIK_ENTRYPOINT_URL", "http://localhost:1933")
+    instances_str = os.environ.get("OPENVIKING_INSTANCES", "")
+    traefik_api = os.environ.get("TRAEFIK_API_URL", "")
 
-    app = build_app(traefik_api, traefik_entry)
+    if instances_str:
+        # Direct connection mode — instances specified explicitly
+        logger.info("Using direct instance configuration from OPENVIKING_INSTANCES")
+        instances = parse_instances(instances_str)
+    elif traefik_api:
+        # Traefik discovery mode — discover instances from Traefik API
+        traefik_entry = os.environ.get("TRAEFIK_ENTRYPOINT_URL", "http://localhost:1933")
+        logger.info("Discovering instances from Traefik at %s", traefik_api)
+        instances = discover_instances(traefik_api, traefik_entry)
+    else:
+        # Default — single instance on localhost
+        logger.info("No OPENVIKING_INSTANCES or TRAEFIK_API_URL set — defaulting to single instance at http://localhost:1940")
+        instances = {"default": "http://localhost:1940"}
+
+    app = build_app(instances)
 
     uvicorn.run(
         app,

@@ -1,238 +1,164 @@
 # OpenViking
 
-A multi-instance [OpenViking](https://github.com/jadenmaciel/openviking) deployment with a unified MCP server and nginx reverse proxy. Designed as a local RAG knowledge base for AI-assisted development workflows.
+Context database for AI agents with semantic search, tiered summaries, and MCP integration.
 
-Each instance maintains an isolated vector database and content store, accessible through a single MCP endpoint that AI agents (Claude Code, etc.) connect to.
+## Quick Start
 
-## Prerequisites
-
-- [Nix](https://nixos.org/) with flakes enabled
-- [direnv](https://direnv.net/) (recommended)
-- An OpenAI API key (for embeddings and content summarization)
-
-## Setup
+### Docker Run
 
 ```bash
-# Clone and enter the directory
-cd OpenViking
+# 1. Create your environment file
+cp .env.example .env
+# Edit .env and add your MISTRAL_API_KEY and ANTHROPIC_API_KEY
 
-# Allow direnv (sets up flake, venv, and env vars automatically)
-direnv allow
+# 2. Start OpenViking
+docker run -d \
+  --name openviking \
+  -p 1940:1940 \
+  -v ./data:/data \
+  --env-file .env \
+  ghcr.io/openviking/openviking:latest
 
-# Or manually: enter the Nix dev shell and sync dependencies
-nix develop
-uv sync
-
-# Add your OpenAI API key
-echo 'OPENAI_API_KEY=sk-...' > .env
+# 3. Verify it's running
+curl http://localhost:1940/health
 ```
 
-## Usage
-
-### Starting and stopping
+### Docker Compose
 
 ```bash
-# Start everything: OpenViking instances, nginx proxy, MCP server
-ov-manager start
-
-# Check what's running
-ov-manager status
-
-# Stop everything
-ov-manager stop
+cp docker-compose.example.yml docker-compose.yml
+cp .env.example .env
+# Edit .env with your API keys
+docker compose up -d
 ```
-
-Output from `ov-manager status`:
-
-```
-OpenViking Manager
-  nginx                    :1933  ● running  (PID 12345)
-  work                     :1940  ● running  (PID 12346)  → http://localhost:1933/work/
-  personal                 :1941  ● running  (PID 12347)  → http://localhost:1933/personal/
-  openviking-mcp           :2033  ● running  (PID 12348)  → http://localhost:2033/mcp
-  deep-researcher          :8001  ● running  (PID 12349)  → http://localhost:8001/mcp
-```
-
-### Managing individual components
-
-```bash
-ov-manager start work         # Start a single instance
-ov-manager stop personal      # Stop a single instance
-ov-manager restart work       # Restart a single instance
-ov-manager start services     # Start only the MCP server and services
-ov-manager stop services      # Stop only services
-```
-
-### Using the OpenViking CLI
-
-The `openviking` CLI interacts with whichever instance `OPENVIKING_CONFIG_FILE` points to (defaults to `ov.conf` / the work instance via `.envrc`):
-
-```bash
-# Add a resource
-openviking add-resource ./path/to/document.pdf
-
-# Semantic search
-openviking search "how does the ETL pipeline work"
-
-# Browse stored content
-openviking ls
-
-# Read a resource
-openviking read viking://resources/research/some-topic.md
-```
-
-## Architecture
-
-```
-Clients (Claude Code, etc.)
-        │
-        ▼
-┌──────────────────────────────────┐
-│  MCP Server (mcp-server.py)      │
-│  :2033                           │
-│  /mcp/work    /mcp/personal      │
-│  12 tools per instance           │
-└───────────────┬──────────────────┘
-                │ HTTP
-┌───────────────▼──────────────────┐
-│  nginx reverse proxy             │
-│  :1933                           │
-│  /work/  →  :1940                │
-│  /personal/  →  :1941            │
-└──┬───────────────────────────┬───┘
-   │                           │
-┌──▼───────────────┐  ┌───────▼──────────┐
-│ openviking-server│  │ openviking-server │
-│ :1940 (work)     │  │ :1941 (personal)  │
-│ data/work/       │  │ data/personal/    │
-│  vectordb/       │  │  vectordb/        │
-│  viking/         │  │  viking/          │
-└──────────────────┘  └───────────────────┘
-```
-
-**Instances** are isolated OpenViking servers, each with their own data directory, vector database, and content store.
-
-**nginx** provides a unified HTTP entry point. Requests to `/work/...` are proxied to the work instance, `/personal/...` to the personal instance.
-
-**MCP server** (`mcp-server.py`) is a single Python process using [FastMCP](https://github.com/jlowin/fastmcp) and Starlette. It creates one MCP endpoint per instance, mounting them at `/mcp/<name>`. Each tool call is forwarded as an HTTP request through the nginx proxy to the correct backend.
-
-### Content tiers (L0/L1/L2)
-
-When a resource is ingested, OpenViking generates three representations:
-
-| Tier | Name | Description | Use case |
-|------|------|-------------|----------|
-| L0 | Abstract | One-line summary | Scanning, filtering |
-| L1 | Overview | Multi-paragraph structured summary | Understanding before deep dive |
-| L2 | Full content | Complete document text | Detailed reading, extraction |
-
-These are generated automatically by the configured VLM (GPT-5.4) and stored alongside the original content.
-
-### Vector search
-
-Content is embedded using OpenAI's `text-embedding-3-large` model (3072 dimensions) and stored in a Milvus-compatible vector database with flat indexing and int8 quantization. Both dense (semantic) and sparse (keyword/BM25) vectors are maintained.
 
 ## Configuration
 
-### instances.json
+### Environment Variables
 
-Central configuration defining all instances, services, and the proxy port:
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `MISTRAL_API_KEY` | Yes* | -- | Mistral API key (*required when using default embedding model) |
+| `ANTHROPIC_API_KEY` | Yes* | -- | Anthropic API key (*required when using default VLM model) |
+| `OPENAI_API_KEY` | No | -- | OpenAI API key (when using OpenAI models) |
+| `OPENVIKING_API_KEY` | No | -- | API key for authenticating requests to OpenViking |
+| `OPENVIKING_AUTH_MODE` | No | `api_key` | Authentication mode: `api_key` or `none` |
+| `OPENVIKING_EMBEDDING_PROVIDER` | No | `litellm` | Embedding provider backend |
+| `OPENVIKING_EMBEDDING_MODEL` | No | `mistral/mistral-embed` | Embedding model (format: `provider/model`) |
+| `OPENVIKING_EMBEDDING_DIMENSION` | No | `1024` | Embedding vector dimension (must match model output) |
+| `OPENVIKING_EMBEDDING_API_BASE` | No | Auto-detected | Embedding API base URL |
+| `OPENVIKING_VLM_PROVIDER` | No | `litellm` | VLM provider backend |
+| `OPENVIKING_VLM_MODEL` | No | `anthropic/claude-sonnet-4-6` | VLM model for generating summaries |
+| `OPENVIKING_DATA_DIR` | No | `/data` | Data directory inside the container |
+| `OPENVIKING_INSTANCES` | No | -- | MCP server only: explicit instance list (`name=url[,name=url]`) |
+| `TRAEFIK_API_URL` | No | -- | MCP server only: Traefik API URL for auto-discovery |
+| `TRAEFIK_ENTRYPOINT_URL` | No | `http://localhost:1933` | MCP server only: Traefik entrypoint for routing |
 
-```json
-{
-  "proxy_port": 1933,
-  "instances": {
-    "work": {
-      "port": 1940,
-      "config": "ov-work.conf",
-      "data": "data-work"
-    },
-    "personal": {
-      "port": 1941,
-      "config": "ov-personal.conf",
-      "data": "data-personal"
-    }
-  },
-  "services": {
-    "openviking-mcp": {
-      "port": 2033,
-      "command": ".venv/bin/python3",
-      "args": ["mcp-server.py", "--port", "2033"]
-    }
-  }
-}
-```
+All sensitive variables support the `_FILE` suffix for Docker/Kubernetes secrets (e.g., `MISTRAL_API_KEY_FILE=/run/secrets/mistral`).
 
-### Instance config (ov-*.conf)
+### Config File
 
-Each instance has a JSON config file specifying storage, embedding, and VLM settings:
+By default, the entrypoint generates configuration from environment variables. Advanced users can mount a custom config file at `/config/ov.conf` to override everything.
+
+Minimal example:
 
 ```json
 {
   "storage": {
-    "workspace": "./data/work"
+    "workspace": "/data"
   },
   "embedding": {
     "dense": {
-      "provider": "openai",
-      "model": "text-embedding-3-large",
-      "api_key": "$OPENAI_API_KEY",
-      "dimension": 3072
+      "provider": "litellm",
+      "model": "mistral/mistral-embed",
+      "api_key": "$MISTRAL_API_KEY",
+      "api_base": "https://api.mistral.ai/v1",
+      "dimension": 1024
     }
   },
   "vlm": {
-    "provider": "openai",
-    "model": "gpt-5.4",
-    "api_key": "$OPENAI_API_KEY"
+    "provider": "litellm",
+    "model": "anthropic/claude-sonnet-4-6",
+    "api_key": "$ANTHROPIC_API_KEY"
   }
 }
 ```
 
-### Adding a new instance
+`$VAR` references in the config file are resolved by OpenViking at runtime from the container's environment.
 
-1. Add the instance to `instances.json` with a unique port
-2. Create an `ov-<name>.conf` with `storage.workspace` pointing to `./data/<name>`
-3. Run `ov-manager restart` — nginx config and MCP server are regenerated automatically
+## Volumes
+
+| Path | Purpose |
+|---|---|
+| `/data` | Persistent storage for documents, embeddings, and indexes |
+| `/config/ov.conf` | Optional: mount a custom config file |
+
+## Ports
+
+| Port | Purpose |
+|---|---|
+| `1940` | OpenViking HTTP API |
+| `2033` | MCP server (multi-instance mode only) |
+
+## Multi-Instance Setup
+
+OpenViking supports running multiple isolated instances, each with its own data directory. There are two ways to wire them up:
+
+### Direct connection (simple)
+
+Set the `OPENVIKING_INSTANCES` env var on the MCP server with explicit URLs:
+
+```bash
+OPENVIKING_INSTANCES=docs=http://ov-docs:1940,research=http://ov-research:1940
+```
+
+### Traefik auto-discovery (dynamic)
+
+For setups where instances are added/removed frequently, use Traefik for automatic discovery. See `docker-compose.example.yml` (Pattern B) for the full setup.
+
+- **Traefik** watches the Docker socket and auto-discovers services with the appropriate labels.
+- Each instance is a separate container with Traefik labels defining its router name and path prefix (e.g., `/docs/`, `/research/`).
+- The **MCP server** queries Traefik's REST API at startup, discovers all OpenViking instances by router prefix, and creates an MCP endpoint for each.
+- Adding a new instance is just adding a new service to `docker-compose.yml` with the correct Traefik labels and running `docker compose up -d`.
 
 ## MCP Integration
 
-The MCP server exposes 12 tools per instance:
+OpenViking exposes 12 tools per instance for use by AI agents via MCP (Model Context Protocol):
 
 | Category | Tools |
 |----------|-------|
-| Search | `search`, `grep_content`, `find_by_pattern` |
-| Read | `read_content`, `get_overview`, `get_abstract` |
-| Navigate | `list_contents`, `get_resource_info`, `get_relations` |
-| Manage | `add_resource`, `add_memory`, `health_check` |
+| **Search** | `search`, `grep_content`, `find_by_pattern` |
+| **Read** | `read_content`, `get_overview`, `get_abstract` |
+| **Navigate** | `list_contents`, `get_resource_info`, `get_relations` |
+| **Manage** | `add_resource`, `add_memory`, `health_check` |
 
-Connect your MCP client to `http://localhost:2033/mcp/<instance_name>` using Streamable HTTP transport.
+**Single-instance mode:** Connect your MCP client to `http://localhost:1940` using Streamable HTTP transport. Or run the MCP server alongside it — without `TRAEFIK_API_URL` set, it defaults to connecting to `http://localhost:1940` as a single instance named `default`.
 
-## File Structure
+**Multi-instance mode:** Connect to the MCP server at `http://localhost:2033/mcp/<instance>` (e.g., `http://localhost:2033/mcp/docs`). The MCP server discovers instances in priority order:
+1. `OPENVIKING_INSTANCES` env var — explicit `name=url` pairs (e.g., `docs=http://ov-docs:1940,research=http://ov-research:1940`)
+2. `TRAEFIK_API_URL` env var — auto-discover via Traefik router labels
+3. Default — single instance at `http://localhost:1940`
 
+## Data Model
+
+When a resource is ingested, OpenViking generates three tiered representations:
+
+| Tier | Name | Description | Use case |
+|------|------|-------------|----------|
+| **L0** | Abstract | One-line summary | Scanning, filtering, cheap retrieval |
+| **L1** | Overview | Structured multi-paragraph summary | Understanding context before a deep dive |
+| **L2** | Full Content | Complete document text | Detailed reading and extraction |
+
+These tiers are generated automatically by the configured VLM and stored alongside the original content. Semantic search uses vector embeddings (dense) to match queries against all stored content.
+
+## Building from Source
+
+```bash
+git clone https://github.com/openviking/openviking.git
+cd openviking
+docker build -t openviking .
 ```
-.
-├── mcp-server.py        # Multi-instance MCP server
-├── ov-manager           # Process lifecycle manager (bash)
-├── instances.json       # Instance and service definitions
-├── ov.conf              # Default OpenViking config (CLI)
-├── ov-work.conf         # Work instance config
-├── ov-personal.conf     # Personal instance config
-├── flake.nix            # Nix dev shell
-├── pyproject.toml       # Python dependencies
-├── .envrc               # direnv: flake + venv + env vars
-├── .env                 # API keys (gitignored)
-├── data/                # Instance data (gitignored)
-│   ├── work/            # Work instance storage
-│   └── personal/        # Personal instance storage
-├── run/                 # PID files and logs (gitignored)
-└── nginx.conf           # Auto-generated (gitignored)
-```
 
-## Logs
+## License
 
-| Log | Location |
-|-----|----------|
-| Instance server logs | `data/<instance>/server.log` |
-| MCP server log | `run/openviking-mcp.log` |
-| nginx access log | `run/nginx/access.log` |
-| nginx error log | `run/nginx/error.log` |
+Apache-2.0
