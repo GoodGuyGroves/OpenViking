@@ -202,6 +202,7 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
 
     _base_url = backend_url.rstrip("/")
     _api_key = os.environ.get("OPENVIKING_API_KEY", "")
+    _agent = os.environ.get("OPENVIKING_AGENT", "ov-mcp")
     _client: Optional[httpx.AsyncClient] = None
 
     async def _get_client() -> httpx.AsyncClient:
@@ -210,7 +211,7 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
             headers = {
                 "X-OpenViking-Account": "default",
                 "X-OpenViking-User": "default",
-                "X-OpenViking-Agent": "default",
+                "X-OpenViking-Agent": _agent,
             }
             if _api_key:
                 headers["X-Api-Key"] = _api_key
