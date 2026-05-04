@@ -121,6 +121,8 @@ No config files to maintain — Docker labels are the single source of truth.
 
 **Secrets**: `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENVIKING_API_KEY` must be in `.env` (gitignored). Docker compose passes them via `env_file: .env`.
 
+**Agent identity**: the MCP server sends `X-OpenViking-Agent` on every backend request so OV's audit trail can attribute reads/writes. Defaults to `ov-mcp`; override via `OPENVIKING_AGENT` env var if running multiple MCP server instances.
+
 ## Data Model
 
 Each instance stores data in its own directory (`data/work/`, `data/personal/`), mounted into the container at `/data`:

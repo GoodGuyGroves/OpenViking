@@ -42,6 +42,7 @@ docker compose up -d
 | `ANTHROPIC_API_KEY` | Yes* | -- | Anthropic API key (*required when using default VLM model) |
 | `OPENAI_API_KEY` | No | -- | OpenAI API key (when using OpenAI models) |
 | `OPENVIKING_API_KEY` | No | -- | API key for authenticating requests to OpenViking |
+| `OPENVIKING_AGENT` | No | `ov-mcp` | Identifies this MCP server in OV's audit trail; sent as `X-OpenViking-Agent` header on backend requests |
 | `OPENVIKING_AUTH_MODE` | No | `api_key` | Authentication mode: `api_key` or `none` |
 | `OPENVIKING_EMBEDDING_PROVIDER` | No | `litellm` | Embedding provider backend |
 | `OPENVIKING_EMBEDDING_MODEL` | No | `mistral/mistral-embed` | Embedding model (format: `provider/model`) |
