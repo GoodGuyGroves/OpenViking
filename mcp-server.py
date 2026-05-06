@@ -438,29 +438,69 @@ def create_mcp_for_instance(instance_name: str, backend_url: str) -> FastMCP:
 
     @mcp.tool()
     async def add_resource(
-        path: str,
+        path: str = "",
+        content: str = "",
+        filename: str = "",
         reason: str = "",
         instruction: str = "",
     ) -> str:
-        """Add a file, directory, or URL to OpenViking for indexing.
+        """Add a resource to OpenViking for indexing.
 
-        The resource will be parsed, chunked, and made searchable.
-        Supported: PDF, Markdown, Text, HTML, Word, images, code files, URLs.
+        Two ways to provide the resource:
+        - `content`: inline text/markdown content. Uploaded as a temp file
+          then registered as a resource. Best for ingesting agent-produced
+          summaries, notes, or any in-memory text.
+        - `path`: a URL (http:// or https://). OpenViking fetches it itself.
+
+        Local host filesystem paths are NOT supported via the HTTP API
+        (the OV server can't read your local disk). If you have a local
+        file, read it yourself and pass the text via `content`.
 
         Args:
-            path: Local file/directory path, or a URL to ingest.
+            path: URL to ingest. Local paths are rejected with an explanatory error.
+            content: Inline text/markdown content. Takes precedence over `path` if both given.
+            filename: Filename to associate with `content` (extension determines parser).
+                Default "content.md".
             reason: Why this resource is being added (helps with retrieval context).
             instruction: Processing instruction for how to interpret the content.
         """
+        if not path and not content:
+            return "Error: provide either `path` (URL) or `content` (inline text)."
+
         c = await _get_client()
         try:
-            resp = await c.post("/api/v1/resources", json={
-                "path": path,
-                "reason": reason,
-                "instruction": instruction,
-                "wait": True,
-                "timeout": 300,
-            }, timeout=310.0)
+            if content:
+                fname = filename or "content.md"
+                mime = "text/markdown" if fname.endswith(".md") else "text/plain"
+                upload_resp = await c.post(
+                    "/api/v1/resources/temp_upload",
+                    files={"file": (fname, content.encode("utf-8"), mime)},
+                    timeout=60.0,
+                )
+                upload_result = _handle_response(upload_resp) or {}
+                temp_file_id = upload_result.get("temp_file_id")
+                if not temp_file_id:
+                    return f"Temp upload returned no temp_file_id: {upload_result}"
+                resp = await c.post("/api/v1/resources", json={
+                    "temp_file_id": temp_file_id,
+                    "reason": reason,
+                    "instruction": instruction,
+                    "wait": True,
+                    "timeout": 300,
+                }, timeout=310.0)
+            else:
+                if path.startswith(("/", "./", "../")):
+                    return (
+                        "Error: local filesystem paths can't be ingested via the HTTP API. "
+                        "Read the file yourself and pass its text via the `content` parameter."
+                    )
+                resp = await c.post("/api/v1/resources", json={
+                    "path": path,
+                    "reason": reason,
+                    "instruction": instruction,
+                    "wait": True,
+                    "timeout": 300,
+                }, timeout=310.0)
             result = _handle_response(resp) or {}
             root_uri = result.get("root_uri", "")
             if root_uri:
