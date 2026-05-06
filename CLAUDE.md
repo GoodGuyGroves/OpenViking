@@ -13,23 +13,15 @@ Local context database (RAG knowledge base) for the Oaasis workspace. Stores and
 
 ## Running
 
-All services run via Docker Compose:
+> **In the Oaasis workspace, the canonical compose file is at the workspace root** (`/Users/russ/Documents/code/Oaasis/docker-compose.yml`), which orchestrates OpenViking + deep-researcher together. Run `docker compose up -d` from there. Do **not** `up` from this directory — the compose file here was renamed to `docker-compose.standalone.yml` precisely so it won't auto-discover. It exists as a reference for deploying OV outside the Oaasis workspace.
+
+For standalone OV deployment outside this workspace:
 
 ```bash
-# Build and start everything
-docker compose up -d
-
-# Check status
-docker compose ps
-
-# Follow logs
-docker compose logs -f
-
-# Stop everything
-docker compose down
-
-# Rebuild after code changes
-docker compose up -d --build
+docker compose -f docker-compose.standalone.yml up -d
+docker compose -f docker-compose.standalone.yml ps
+docker compose -f docker-compose.standalone.yml logs -f
+docker compose -f docker-compose.standalone.yml down
 ```
 
 Selective operations:
